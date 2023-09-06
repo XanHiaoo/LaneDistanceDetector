@@ -1,5 +1,34 @@
-<div style="display: flex; align-items: center;">
-  <div style="flex: 1;">
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  .container {
+    display: flex;
+    align-items: flex-start; /* 修改为垂直对齐顶部 */
+  }
+
+.left {
+flex: 1;
+padding: 20px;
+border: 1px solid #ccc;
+}
+
+.right {
+flex: 1;
+text-align: center;
+padding: 20px;
+border: 1px solid #ccc;
+}
+
+img {
+max-width: 100%;
+height: auto;
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="left">
     <h2>算法流程简述</h2>
     <h3>过滤直线 (FilterLines)</h3>
     <p>接受线段的向量作为输入 计算每条线段的斜率（m）和截距（c）</p>
@@ -17,11 +46,12 @@
     <p>调用GetLines()来检测图像中的线条</p>
     <p>调用GetVanishingPoint()来计算消失点</p>
   </div>
-  <div style="flex: 1; text-align: center;">
+  <div class="right">
     <img src="https://imgurl-x.oss-cn-hangzhou.aliyuncs.com/xuxing-img/image-20230905171152369.png" alt="算法流程图">
   </div>
-</div><div style="display: flex; align-items: center;">
-  <div style="flex: 1;">
+</div>
+<div class="container">
+  <div class="left">
     <h3>计算平行平面 (calculatingParallelPlane)</h3>
     <p>计算通过消失点的线的方向向量</p>
     <p>计算由点对形成的平面的交线</p>
@@ -29,7 +59,7 @@
     <h3>计算平面参数 (calculatePlaneParameters)</h3>
     <p>使用先前计算的verticalLinePair_之间的距离和planeParameters_计算平面方程的系数，并更新planeParameters_</p>
   </div>
-  <div style="flex: 1;">
+  <div class="right">
     <h3>计算点之间的距离 (calculateDistanceBetweenPoints)</h3>
     <p>计算两点的方向向量 使用planeParameters_计算平面上的交点 计算交点之间的距离并返回</p>
     <h3>加载设置 (loadSettings)</h3>
@@ -38,4 +68,5 @@
     <p>如果设置是LOAD_PENDING，将平面参数保存到设置中</p>
   </div>
 </div>
-
+</body>
+</html>
