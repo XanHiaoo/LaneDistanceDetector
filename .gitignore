@@ -364,3 +364,4 @@ FodyWeavers.xsd
 
 cmake-build-*/
 /.clang-format
+/LaneData/Lane1
