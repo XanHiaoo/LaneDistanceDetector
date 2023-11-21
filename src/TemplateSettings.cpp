@@ -1,4 +1,4 @@
-#include "TemplateSettings.h"
+﻿#include "TemplateSettings.h"
 #include <fmt/core.h>
 #include <fstream>
 #include <iostream>
@@ -67,24 +67,18 @@ LOAD_RESULT_CODE TemplateSettings::load(const std::string &path)
         if (jsonObject.contains("TemplateVerticalLine"))
         {
             auto templateVerticalLineObject = jsonObject["TemplateVerticalLine"];
-            if (templateVerticalLineObject.contains("Lane1") && templateVerticalLineObject.contains("Lane2"))
+            if (templateVerticalLineObject.contains("Lane1"))
             {
                 auto lane1Object = templateVerticalLineObject["Lane1"];
-                auto lane2Object = templateVerticalLineObject["Lane2"];
+  
 
-                if (lane1Object.contains("Point1") && lane1Object.contains("Point2") &&
-                    lane2Object.contains("Point1") && lane2Object.contains("Point2"))
+                if (lane1Object.contains("Point1") && lane1Object.contains("Point2"))
                 {
 
                     TEMPLATE_VERTICAL_LINE_POINT_PAIR1_.first.x = lane1Object["Point1"][0].get<int>();
                     TEMPLATE_VERTICAL_LINE_POINT_PAIR1_.first.y = lane1Object["Point1"][1].get<int>();
                     TEMPLATE_VERTICAL_LINE_POINT_PAIR1_.second.x = lane1Object["Point2"][0].get<int>();
                     TEMPLATE_VERTICAL_LINE_POINT_PAIR1_.second.y = lane1Object["Point2"][1].get<int>();
-
-                    TEMPLATE_VERTICAL_LINE_POINT_PAIR2_.first.x = lane2Object["Point1"][0].get<int>();
-                    TEMPLATE_VERTICAL_LINE_POINT_PAIR2_.first.y = lane2Object["Point1"][1].get<int>();
-                    TEMPLATE_VERTICAL_LINE_POINT_PAIR2_.second.x = lane2Object["Point2"][0].get<int>();
-                    TEMPLATE_VERTICAL_LINE_POINT_PAIR2_.second.y = lane2Object["Point2"][1].get<int>();
 
                     fmt::print("TemplateVerticalLine points loaded from template.json.\n");
                 }
@@ -97,7 +91,7 @@ LOAD_RESULT_CODE TemplateSettings::load(const std::string &path)
             }
             else
             {
-                fmt::print(stderr, "Lane1 or Lane2 not found in TemplateVerticalLine "
+                fmt::print(stderr, "Lane1 not found in TemplateVerticalLine "
                                    "section of template.json!\n");
                 return LOAD_MISSING_VERTICAL_LINE_POINT_PAIR;
             }

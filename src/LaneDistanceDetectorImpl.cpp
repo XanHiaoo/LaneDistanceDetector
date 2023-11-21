@@ -293,7 +293,7 @@ bool LaneDistanceDetectorImpl::calculateVanishingPoint()
 
 cv::Vec3d LaneDistanceDetectorImpl::calculatingParallelPlane()
 {
-    if (verticalLinePointPairs_.size() < 2)
+    if (verticalLinePointPairs_.size() < 1)
     {
         // Handle the case when there are not enough point pairs
         return cv::Vec3d(0.0, 0.0, 0.0);
@@ -310,19 +310,15 @@ cv::Vec3d LaneDistanceDetectorImpl::calculatingParallelPlane()
 
     // Retrieve the two sets of point pairs
     const std::pair<cv::Point, cv::Point> &pointPair1 = verticalLinePointPairs_[0];
-    const std::pair<cv::Point, cv::Point> &pointPair2 = verticalLinePointPairs_[1];
 
     // Extract points from the point pairs
     const cv::Point &p1 = pointPair1.first;
     const cv::Point &p2 = pointPair1.second;
-    const cv::Point &q1 = pointPair2.first;
-    const cv::Point &q2 = pointPair2.second;
+
 
     // Calculate the direction vectors of the lines for the two point pairs
     cv::Vec3d dir1((p1.x - u) / fx, (p1.y - v) / fy, 1.0);
     cv::Vec3d dir2((p2.x - u) / fx, (p2.y - v) / fy, 1.0);
-    cv::Vec3d dir3((q1.x - u) / fx, (q1.y - v) / fy, 1.0);
-    cv::Vec3d dir4((q2.x - u) / fx, (q2.y - v) / fy, 1.0);
 
     std::pair<cv::Vec3d, cv::Vec3d> linePair(dir1, dir2);
 
@@ -333,7 +329,7 @@ cv::Vec3d LaneDistanceDetectorImpl::calculatingParallelPlane()
     // Normalize the normal vector
     normal1 /= cv::norm(normal1);
 
-    cv::Vec3d normal2 = dir3.cross(dir4);
+    cv::Vec3d normal2 = dirVanishing;
     normal2 /= cv::norm(normal2);
 
     // Calculate the coefficients of the plane equations Ax + By + Cz + D = 0
@@ -346,8 +342,9 @@ cv::Vec3d LaneDistanceDetectorImpl::calculatingParallelPlane()
     double C2 = normal2[2];
 
     // Calculate the direction vector of the intersection line of the two planes
-    cv::Vec3d intersectionLineDir = normal1.cross(normal2);
-
+    //cv::Vec3d intersectionLineDir = normal1.cross(normal2);
+    cv::Vec3d intersectionLineDir(1.0, (-A1 / A2), (-B1 / B2));
+    intersectionLineDir /= cv::norm(intersectionLineDir);
     // Calculate the coefficients of the plane equation Ax + By + Cz + D = 0
     double A = intersectionLineDir[0];
     double B = intersectionLineDir[1];
@@ -370,11 +367,6 @@ cv::Vec3d LaneDistanceDetectorImpl::calculatingParallelPlane()
 
 cv::Vec4d LaneDistanceDetectorImpl::calculatePlaneParameters()
 {
-    // Construct the plane equation Ax + By + Cz + D = 0
-    double A = planeParameters_[0];
-    double B = planeParameters_[1];
-    double C = planeParameters_[2];
-
     // Extract lines from the line pair
     cv::Vec3d line1 = verticalLinePair_.first;
     cv::Vec3d line2 = verticalLinePair_.second;
@@ -383,14 +375,29 @@ cv::Vec4d LaneDistanceDetectorImpl::calculatePlaneParameters()
     cv::Vec3d dir1(line1[0], line1[1], line1[2]);
     cv::Vec3d dir2(line2[0], line2[1], line2[2]);
 
-    double D = 6.0 * (A * dir1[0] + B * dir1[1] + C * dir1[2]) / cv::norm(dir1 - dir2);
+    double A = planeParameters_[0];
+    double B = planeParameters_[1];
+    double C = planeParameters_[2];
+    // Calculate the unit normal vector of the plane
+    cv::Vec3d normal(A, B, C);
+    double normalLength = cv::norm(normal);
+    normal /= normalLength; // Normalize the normal vector
+
+    // Calculate the distance between the two lines
+    double distance = 5.7; // Desired distance between the two points
+
+    // Calculate the D value of the plane such that the two points are at the desired distance
+    double D = (A * dir1[0] + B * dir1[1] + C * dir1[2]) + distance * normalLength;
+
+    // Store the updated D value in planeParameters_
     planeParameters_[3] = D;
 
     savePlaneParameters(planeParameters_);
     return planeParameters_;
 }
 
-cv::Vec3d LaneDistanceDetectorImpl::calculatePixel2Coordinate(const cv::Point &point)
+
+cv::Vec3d LaneDistanceDetectorImpl::calculatePixel2Coordinate(const cv::Point& point)
 {
     // Get the camera matrix values
     double fx = cameraMatrix_.at<double>(0, 0);
@@ -408,31 +415,20 @@ cv::Vec3d LaneDistanceDetectorImpl::calculatePixel2Coordinate(const cv::Point &p
     double D = planeParameters_[3];
 
     // Calculate the intersection points between the lines and the plane
-    cv::Vec3d intersectionPoint = (D - A * dir[0] - B * dir[1]) / C * cv::Vec3d(1, 1, 0) + dir;
+    double t = D / (A* dir[0] + B* dir[1] + C* dir[2]);
+    cv::Vec3d intersectionPoint(dir[0] * t, dir[1] * t, dir[2] * t);
+
     return intersectionPoint;
 }
 
+
 double LaneDistanceDetectorImpl::calculateDistanceBetweenPoints(const cv::Point &point1, const cv::Point &point2)
 {
-    // Get the camera matrix values
-    double fx = cameraMatrix_.at<double>(0, 0);
-    double fy = cameraMatrix_.at<double>(1, 1);
-    double u = cameraMatrix_.at<double>(0, 2);
-    double v = cameraMatrix_.at<double>(1, 2);
 
-    // Calculate the direction vectors of the lines for the two point pairs
-    cv::Vec3d dir1((point1.x - u) / fx, (point1.y - v) / fy, 1.0);
-    cv::Vec3d dir2((point2.x - u) / fx, (point2.y - v) / fy, 1.0);
-
-    // Get plane parameters
-    double A = planeParameters_[0];
-    double B = planeParameters_[1];
-    double C = planeParameters_[2];
-    double D = planeParameters_[3];
 
     // Calculate the intersection points between the lines and the plane
-    cv::Vec3d intersectionPoint1 = (D - A * dir1[0] - B * dir1[1]) / C * cv::Vec3d(1, 1, 0) + dir1;
-    cv::Vec3d intersectionPoint2 = (D - A * dir2[0] - B * dir2[1]) / C * cv::Vec3d(1, 1, 0) + dir2;
+    cv::Vec3d intersectionPoint1 = calculatePixel2Coordinate(point1);
+    cv::Vec3d intersectionPoint2 = calculatePixel2Coordinate(point2);
 
     // Calculate the distance between the intersection points
     double distance = cv::norm(intersectionPoint1 - intersectionPoint2);
@@ -440,8 +436,7 @@ double LaneDistanceDetectorImpl::calculateDistanceBetweenPoints(const cv::Point 
     return distance;
 }
 
-LOAD_RESULT_CODE
-LaneDistanceDetectorImpl::loadSettings(const std::string &path)
+LOAD_RESULT_CODE LaneDistanceDetectorImpl::loadSettings(const std::string &path)
 {
     LOAD_RESULT_CODE result = settings.load(path);
     switch (result)
@@ -455,7 +450,6 @@ LaneDistanceDetectorImpl::loadSettings(const std::string &path)
     case LOAD_PENDING:
         cameraMatrix_ = settings.TEMPLATE_CAMERA_MATRIX_;
         verticalLinePointPairs_.push_back(settings.TEMPLATE_VERTICAL_LINE_POINT_PAIR1_);
-        verticalLinePointPairs_.push_back(settings.TEMPLATE_VERTICAL_LINE_POINT_PAIR2_);
         settingsLoaded = LOAD_PENDING;
         break;
 
