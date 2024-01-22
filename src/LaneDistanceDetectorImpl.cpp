@@ -1,153 +1,5 @@
-#define _USE_MATH_DEFINES
-
 #include "LaneDistanceDetectorImpl.h"
-
-float REJECT_DEGREE_TH = 4.0;
-
-std::vector<std::vector<double>> FilterLines(std::vector<cv::Vec4i> Lines)
-{
-    std::vector<std::vector<double>> FinalLines;
-
-    for (int i = 0; i < Lines.size(); i++)
-    {
-        cv::Vec4i Line = Lines[i];
-        int x1 = Line[0], y1 = Line[1];
-        int x2 = Line[2], y2 = Line[3];
-
-        double m, c;
-
-        // Calculating equation of the line : y = mx + c
-        if (x1 != x2)
-            m = (double)(y2 - y1) / (double)(x2 - x1);
-        else
-            m = 100000000.0;
-        c = y2 - m * x2;
-
-        // theta will contain values between - 90 -> + 90.
-        double theta = atan(m) * (180.0 / M_PI);
-
-        // Rejecting lines of slope near to 0 degree or 90 degree and storing others
-        if (REJECT_DEGREE_TH <= abs(theta) && abs(theta) <= (90.0 - REJECT_DEGREE_TH) && -75.0 <= theta &&
-            theta <= -20.0)
-        {
-            double l = pow((pow((y2 - y1), 2) + pow((x2 - x1), 2)),
-                           0.5); // length of the line
-            std::vector<double> FinalLine{(double)x1, (double)y1, (double)x2, (double)y2, m, c, l};
-            FinalLines.push_back(FinalLine);
-        }
-    }
-
-    // Removing extra lines
-    // (we might get many lines, so we are going to take only longest 15 lines
-    // for further computation because more than this number of lines will only
-    // contribute towards slowing down of our algo.)
-    if (FinalLines.size() > 15)
-    {
-        std::sort(FinalLines.begin(), FinalLines.end(),
-                  [](const std::vector<double> &a, const std::vector<double> &b) { return a[6] > b[6]; });
-
-        FinalLines = std::vector<std::vector<double>>(FinalLines.begin(), FinalLines.begin() + 15);
-    }
-
-    return FinalLines;
-}
-
-std::vector<std::vector<double>> GetLines(cv::Mat Image)
-{
-    int height = Image.rows;
-    int width = Image.cols;
-
-    // Select the region of interest (ROI) as the lower half of the image
-    cv::Mat roi = Image(cv::Rect(0, height / 2, width, height / 2));
-
-    // Converting ROI to grayscale
-    cv::Mat GrayImage;
-    cv::cvtColor(roi, GrayImage, cv::COLOR_BGR2GRAY);
-    // Blurring image to reduce noise.
-    cv::Mat BlurGrayImage;
-    cv::GaussianBlur(GrayImage, BlurGrayImage, cv::Size(5, 5), 1);
-    // Generating Edge image
-    cv::Mat EdgeImage;
-    cv::Canny(BlurGrayImage, EdgeImage, 40, 255);
-
-    // Finding Lines in the ROI
-    std::vector<cv::Vec4i> Lines;
-    cv::HoughLinesP(EdgeImage, Lines, 1, CV_PI / 180, 50, 10, 15);
-
-    // Check if lines found and exit if not.
-    if (Lines.size() == 0)
-    {
-        std::cout << "Not enough lines found in the image for Vanishing Point detection." << std::endl;
-        exit(3);
-    }
-
-    // Transform the lines' coordinates to the original image coordinate space
-    for (cv::Vec4i &line : Lines)
-    {
-        line[1] += height / 2;
-        line[3] += height / 2;
-    }
-
-    // Filtering Lines wrt angle
-    std::vector<std::vector<double>> FilteredLines;
-    FilteredLines = FilterLines(Lines);
-
-    return FilteredLines;
-}
-
-int *GetVanishingPoint(std::vector<std::vector<double>> Lines)
-{
-    // We will apply RANSAC inspired algorithm for this. We will take combination
-    // of 2 lines one by one, find their intersection point, and calculate the
-    // total error(loss) of that point. Error of the point means root of sum of
-    // squares of distance of that point from each line.
-    int *VanishingPoint = new int[2];
-    VanishingPoint[0] = -1;
-    VanishingPoint[1] = -1;
-
-    double MinError = 1000000000.0;
-
-    for (int i = 0; i < Lines.size(); i++)
-    {
-        for (int j = i + 1; j < Lines.size(); j++)
-        {
-            double m1 = Lines[i][4], c1 = Lines[i][5];
-            double m2 = Lines[j][4], c2 = Lines[j][5];
-
-            if (m1 != m2)
-            {
-                double x0 = (c1 - c2) / (m2 - m1);
-                double y0 = m1 * x0 + c1;
-
-                double err = 0;
-                for (int k = 0; k < Lines.size(); k++)
-                {
-                    double m = Lines[k][4], c = Lines[k][5];
-                    double m_ = (-1 / m);
-                    double c_ = y0 - m_ * x0;
-
-                    double x_ = (c - c_) / (m_ - m);
-                    double y_ = m_ * x_ + c_;
-
-                    double l = pow((pow((y_ - y0), 2) + pow((x_ - x0), 2)), 0.5);
-
-                    err += pow(l, 2);
-                }
-
-                err = pow(err, 0.5);
-
-                if (MinError > err)
-                {
-                    MinError = err;
-                    VanishingPoint[0] = (int)x0;
-                    VanishingPoint[1] = (int)y0;
-                }
-            }
-        }
-    }
-
-    return VanishingPoint;
-}
+#include "VanishingPointDetector.h"
 
 LaneDistanceDetectorImpl::LaneDistanceDetectorImpl()
 {
@@ -202,17 +54,21 @@ bool LaneDistanceDetectorImpl::calculateVanishingPoint()
         std::cerr << "模板图像未设置!" << std::endl;
         return false;
     }
-    cv::Mat Image = laneTemplateImage_.clone();
+    cv::Mat image = laneTemplateImage_.clone();
 
-    // Getting the lines from the image
-    std::vector<std::vector<double>> Lines;
-    Lines = GetLines(Image);
+    VanishingPointDetector detector(image);
+    std::vector<std::vector<double>> lines = detector.GetLines();
 
-    // Get vanishing point
-    int *VanishingPoint = GetVanishingPoint(Lines);
+    if (lines.empty()) {
+        std::cerr << "Not enough lines found for Vanishing Point detection." << std::endl;
+        return false;
+    }
+
+    // Get the Vanishing Point
+    int* vanishing_point = detector.GetVanishingPoint();
 
     // Checking if vanishing point found
-    if (VanishingPoint[0] == -1 && VanishingPoint[1] == -1)
+    if (vanishing_point[0] == -1 && vanishing_point[1] == -1)
     {
         std::cout << "Vanishing Point not found. Possible reason is that not enough "
                      "lines are found in the image for determination of vanishing point."
@@ -221,30 +77,30 @@ bool LaneDistanceDetectorImpl::calculateVanishingPoint()
     }
     else
     {
-        setVanishingPoint(cv::Point(VanishingPoint[0], VanishingPoint[1]));
+        setVanishingPoint(cv::Point(vanishing_point[0], vanishing_point[1]));
     }
 
 #ifdef _DEBUG
     // Check if vanishing point is within image bounds
-    if (VanishingPoint[0] < 0 || VanishingPoint[0] >= Image.cols || VanishingPoint[1] < 0 ||
-        VanishingPoint[1] >= Image.rows)
+    if (vanishing_point[0] < 0 || vanishing_point[0] >= image.cols || vanishing_point[1] < 0 ||
+        vanishing_point[1] >= image.rows)
     {
         // Calculate the required border extension based on vanishing point position
-        int top = std::max(0, -VanishingPoint[1] + 20);
-        int bottom = std::max(0, VanishingPoint[1] - Image.rows + 20);
-        int left = std::max(0, -VanishingPoint[0] + 20);
-        int right = std::max(0, VanishingPoint[0] - Image.cols + 20);
+        int top = std::max(0, -vanishing_point[1] + 20);
+        int bottom = std::max(0, vanishing_point[1] - image.rows + 20);
+        int left = std::max(0, -vanishing_point[0] + 20);
+        int right = std::max(0, vanishing_point[0] - image.cols + 20);
 
         // Extend image borders and fill with black color
         cv::Mat extendedImage;
-        cv::copyMakeBorder(Image, extendedImage, top, bottom, left, right, cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+        cv::copyMakeBorder(image, extendedImage, top, bottom, left, right, cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
 
         // Update vanishing point coordinates
-        VanishingPoint[0] += left;
-        VanishingPoint[1] += top;
+        vanishing_point[0] += left;
+        vanishing_point[1] += top;
 
         // Update Lines' coordinates
-        for (auto &Line : Lines)
+        for (auto &Line : lines)
         {
             Line[0] += left;
             Line[1] += top;
@@ -253,14 +109,14 @@ bool LaneDistanceDetectorImpl::calculateVanishingPoint()
         }
 
         // Drawing lines and vanishing point on extended image
-        for (const auto &Line : Lines)
+        for (const auto &Line : lines)
         {
             cv::line(extendedImage, cv::Point((int)Line[0], (int)Line[1]), cv::Point((int)Line[2], (int)Line[3]),
                      cv::Scalar(0, 255, 0), 2);
         }
-        cv::circle(extendedImage, cv::Point(VanishingPoint[0], VanishingPoint[1]), 10, cv::Scalar(0, 0, 255), -1);
-        /*cv::putText(extendedImage, "VanishingPoint", cv::Point(VanishingPoint[0] -
-           10, VanishingPoint[1] + 10), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0,
+        cv::circle(extendedImage, cv::Point(vanishing_point[0], vanishing_point[1]), 10, cv::Scalar(0, 0, 255), -1);
+        /*cv::putText(extendedImage, "vanishing_point", cv::Point(vanishing_point[0] -
+           10, vanishing_point[1] + 10), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0,
            0, 255), 2);*/
 
         // Resize the extended image to fit the screen size
@@ -276,14 +132,14 @@ bool LaneDistanceDetectorImpl::calculateVanishingPoint()
     else
     {
         // Drawing lines and vanishing point on original image
-        for (const auto &Line : Lines)
+        for (const auto &Line : lines)
         {
-            cv::line(Image, cv::Point((int)Line[0], (int)Line[1]), cv::Point((int)Line[2], (int)Line[3]),
+            cv::line(image, cv::Point((int)Line[0], (int)Line[1]), cv::Point((int)Line[2], (int)Line[3]),
                      cv::Scalar(0, 255, 0), 2);
         }
-        cv::circle(Image, cv::Point(VanishingPoint[0], VanishingPoint[1]), 10, cv::Scalar(0, 0, 255), -1);
-        /*cv::putText(Image, "VanishingPoint", cv::Point(VanishingPoint[0]-500,
-           VanishingPoint[1]+500), cv::FONT_HERSHEY_SIMPLEX, 5, cv::Scalar(255, 0,
+        cv::circle(image, cv::Point(vanishing_point[0], vanishing_point[1]), 10, cv::Scalar(0, 0, 255), -1);
+        /*cv::putText(image, "vanishing_point", cv::Point(vanishing_point[0]-500,
+           vanishing_point[1]+500), cv::FONT_HERSHEY_SIMPLEX, 5, cv::Scalar(255, 0,
            0), 10);*/
     }
 #endif
