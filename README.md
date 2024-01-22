@@ -86,7 +86,7 @@
 车道上需要检测的点对应的像素坐标
 
 ```c++
-cv::Point& Pixel
+cv::Point Pixel
 ```
 
 ## 输出
